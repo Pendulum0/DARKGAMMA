@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 # ----------------------------------------------------------------------------
 # CONFIG / THEME
 # ----------------------------------------------------------------------------
-st.set_page_config(page_title="DARKGAMMA", page_icon="🟢", layout="wide",
+st.set_page_config(page_title="DARKGAMMA", page_icon="", layout="wide",
                    initial_sidebar_state="collapsed")
 
 RISK_FREE = 0.043           # annualized risk-free rate assumption (edit as needed)
@@ -260,7 +260,7 @@ def fmt_b(x):
 now = dt.datetime.now(ET).strftime("%H:%M:%S ET")
 c1, c2, c3 = st.columns([3, 5, 3])
 with c1:
-    st.markdown('<div class="gx-logo">🟢 DARK<span>GAMMA</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="gx-logo">🔳 DARK<span>GAMMA</span></div>', unsafe_allow_html=True)
 with c2:
     ticker = st.text_input("ticker", "QQQ", label_visibility="collapsed").upper().strip()
 with c3:
