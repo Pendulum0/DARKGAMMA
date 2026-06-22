@@ -31,55 +31,93 @@ CONTRACT_MULT = 100         # shares per option contract
 MAX_DTE_BUTTONS = 5         # 0DTE .. 5DTE
 ET = dt.timezone(dt.timedelta(hours=-4))  # Eastern (EDT). Switch to -5 for EST.
 
-# palette
-# Functional colors carry meaning (calls/puts/regime) → full color.
-# Chrome (logo, tabs, headers, status) stays monochrome on black.
-C_GREEN  = "#00e08a"   # calls / positive / bullish / resistance
-C_RED    = "#ff4d5e"   # puts  / negative / bearish / support
-C_YELL   = "#ffb01f"   # gamma flip / max pain accent
-C_BG     = "#000000"
-C_PANEL  = "#0d0d0d"
-C_GRID   = "#222222"
-C_TXT    = "#e6e6e6"
-C_DIM    = "#7a7a7a"
-C_ACCENT = "#e6e6e6"   # monochrome chrome accent (logo, tabs, section heads)
+# ----------------------------------------------------------------------------
+# THEME SYSTEM — user-customizable from the Customize tab (stored in session)
+# ----------------------------------------------------------------------------
+def _hx(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+def _lighten(h, f):
+    r, g, b = _hx(h)
+    return f"#{int(r+(255-r)*f):02x}{int(g+(255-g)*f):02x}{int(b+(255-b)*f):02x}"
+def _rgba(h, a):
+    r, g, b = _hx(h)
+    return f"rgba({r},{g},{b},{a})"
+
+THEMES = {
+    "Midnight":  dict(g="#00e08a", r="#ff4d5e", y="#ffb01f", bg="#000000", panel="#0d0d0d", grid="#222222", txt="#e6e6e6", dim="#7a7a7a", accent="#e6e6e6"),
+    "Synthwave": dict(g="#2ee6c8", r="#ff3d8b", y="#ffe14d", bg="#160d2b", panel="#211543", grid="#3a2566", txt="#efe6ff", dim="#9a82c8", accent="#ff3d8b"),
+    "Bubblegum": dict(g="#5fe0b0", r="#ff7eb6", y="#ffd56b", bg="#1c1430", panel="#2a1f45", grid="#3e2f5e", txt="#fdeef8", dim="#ad93cf", accent="#82e9ff"),
+    "Ember":     dict(g="#9ad84f", r="#ff5c7a", y="#ffb347", bg="#120c0a", panel="#1d1512", grid="#33231c", txt="#f6e7d6", dim="#8d7565", accent="#ff8a3c"),
+    "Solar":     dict(g="#9aa800", r="#e0483f", y="#caa400", bg="#04303b", panel="#0a3d49", grid="#13525f", txt="#eee8d5", dim="#6f8a92", accent="#2aa6d6"),
+    "Mono":      dict(g="#f2f2f2", r="#7c7c7c", y="#b8b8b8", bg="#000000", panel="#0d0d0d", grid="#222222", txt="#e6e6e6", dim="#7a7a7a", accent="#bdbdbd"),
+}
+FONTS = {
+    "Mono":    "'JetBrains Mono','SF Mono','Menlo',monospace",
+    "Rounded": "'Quicksand',system-ui,sans-serif",
+    "Grotesk": "'Space Grotesk',system-ui,sans-serif",
+    "Techno":  "'Orbitron',system-ui,sans-serif",
+}
+BOX_STYLES = ["Sharp", "Bubbly", "Glass"]
+
+st.session_state.setdefault("dg_theme", "Midnight")
+st.session_state.setdefault("dg_font", "Mono")
+st.session_state.setdefault("dg_box", "Sharp")
+_t = THEMES.get(st.session_state["dg_theme"], THEMES["Midnight"])
+_font = FONTS.get(st.session_state["dg_font"], FONTS["Mono"])
+_box = st.session_state["dg_box"] if st.session_state["dg_box"] in BOX_STYLES else "Sharp"
+
+C_GREEN, C_RED, C_YELL = _t["g"], _t["r"], _t["y"]
+C_BG, C_PANEL, C_GRID = _t["bg"], _t["panel"], _t["grid"]
+C_TXT, C_DIM, C_ACCENT = _t["txt"], _t["dim"], _t["accent"]
+
+if _box == "Bubbly":
+    CARD = (f"background:linear-gradient(145deg,{_lighten(C_PANEL,0.07)},{C_PANEL});"
+            f"border:1px solid {_rgba(C_ACCENT,0.20)};border-radius:20px;"
+            f"box-shadow:0 6px 22px {_rgba(C_ACCENT,0.10)},inset 0 1px 0 {_rgba('#ffffff',0.05)};")
+    TAB_RADIUS = "16px"
+elif _box == "Glass":
+    CARD = (f"background:{_rgba(C_PANEL,0.45)};border:1px solid {_rgba(C_TXT,0.12)};"
+            f"border-radius:16px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);"
+            f"box-shadow:0 4px 18px rgba(0,0,0,0.35);")
+    TAB_RADIUS = "14px"
+else:
+    CARD = f"background:{C_PANEL};border:1px solid {C_GRID};border-radius:8px;box-shadow:none;"
+    TAB_RADIUS = "6px"
 
 CSS = f"""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&family=Orbitron:wght@500;700&display=swap');
 .stApp {{ background:{C_BG}; }}
 #MainMenu, header, footer {{ visibility:hidden; }}
 .block-container {{ padding-top:0.5rem; padding-bottom:3rem; padding-left:3rem; padding-right:3rem; max-width:1900px; }}
-* {{ font-family:'SF Mono','JetBrains Mono','Menlo',monospace; }}
+* {{ font-family:{_font}; }}
+code, pre, [data-testid="stCode"], [data-testid="stCode"] * {{ font-family:'JetBrains Mono','SF Mono',monospace !important; }}
 
-.gx-top {{ display:flex; align-items:center; justify-content:space-between;
-  border-bottom:1px solid {C_GRID}; padding:6px 10px 10px 4px; }}
-.gx-logo {{ font-size:20px; font-weight:700; letter-spacing:2px; color:#fff; }}
+.gx-top {{ display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid {C_GRID}; padding:6px 10px 10px 4px; }}
+.gx-logo {{ font-size:20px; font-weight:700; letter-spacing:2px; color:{C_TXT}; }}
 .gx-logo span {{ color:{C_ACCENT}; }}
 .gx-live {{ color:{C_ACCENT}; font-size:12px; font-weight:700; letter-spacing:1px; }}
-.gx-clock {{ color:{C_DIM}; font-size:12px; border:1px solid {C_GRID}; padding:3px 8px;
-  border-radius:4px; margin-left:8px; }}
-.gx-disc {{ color:#3a3a3a; font-size:9px; text-align:center; letter-spacing:1px;
-  padding:3px 0; border-bottom:1px solid {C_GRID}; }}
-.gx-news {{ color:{C_DIM}; font-size:11px; padding:6px 4px; border-bottom:1px solid {C_GRID};
-  white-space:nowrap; overflow:hidden; }}
+.gx-clock {{ color:{C_DIM}; font-size:12px; border:1px solid {C_GRID}; padding:3px 8px; border-radius:4px; margin-left:8px; }}
+.gx-disc {{ color:{C_DIM}; opacity:0.55; font-size:9px; text-align:center; letter-spacing:1px; padding:3px 0; border-bottom:1px solid {C_GRID}; }}
+.gx-news {{ color:{C_DIM}; font-size:11px; padding:6px 4px; border-bottom:1px solid {C_GRID}; white-space:nowrap; overflow:hidden; }}
 .gx-news b {{ color:{C_TXT}; }}
 .gx-news .tag {{ color:{C_ACCENT}; border:1px solid {C_GRID}; padding:1px 5px; border-radius:3px; }}
 
-.gx-cardrow {{ display:flex; gap:10px; margin:12px 0; }}
-.gx-card {{ flex:1; background:{C_PANEL}; border:1px solid {C_GRID}; border-radius:8px;
-  padding:14px 16px; }}
+.gx-cardrow {{ display:flex; gap:12px; margin:12px 0; }}
+.gx-card, .dg-box {{ {CARD} }}
+.gx-card {{ flex:1; padding:14px 18px; }}
 .gx-card .lbl {{ font-size:10px; letter-spacing:1.5px; color:{C_DIM}; }}
 .gx-card .dot {{ font-size:9px; margin-right:5px; }}
 .gx-card .val {{ font-size:26px; font-weight:700; margin:4px 0 2px; }}
 .gx-card .sub {{ font-size:10px; color:{C_DIM}; }}
+.dg-box {{ padding:9px 14px; }}
 
-[data-baseweb="tab-list"] {{ gap:4px; justify-content:center; background:transparent; }}
-[data-baseweb="tab"] {{ background:{C_PANEL}; border:1px solid {C_GRID}; border-radius:6px;
-  color:{C_DIM}; font-size:13px; padding:6px 16px; }}
-[aria-selected="true"][data-baseweb="tab"] {{ color:{C_ACCENT}; border-color:{C_ACCENT}44; }}
+[data-baseweb="tab-list"] {{ gap:5px; justify-content:center; background:transparent; }}
+[data-baseweb="tab"] {{ background:{C_PANEL}; border:1px solid {C_GRID}; border-radius:{TAB_RADIUS}; color:{C_DIM}; font-size:13px; padding:6px 16px; }}
+[aria-selected="true"][data-baseweb="tab"] {{ color:{C_ACCENT}; border-color:{_rgba(C_ACCENT,0.4)}; }}
 
-div[data-testid="stMetric"] {{ background:{C_PANEL}; border:1px solid {C_GRID};
-  border-radius:8px; padding:10px 14px; }}
+div[data-testid="stMetric"] {{ {CARD} padding:10px 16px; }}
 .stSelectbox label, .stRadio label {{ color:{C_DIM}; font-size:11px; }}
 hr {{ border-color:{C_GRID}; }}
 .panel-title {{ font-size:11px; letter-spacing:1px; color:{C_DIM}; margin-bottom:2px; }}
@@ -609,8 +647,8 @@ def compute_regime(hist, net_gex, flip, spot):
 # ----------------------------------------------------------------------------
 # TABS
 # ----------------------------------------------------------------------------
-tab_conf, tab_regime, tab_greeks, tab_heat, tab_flow, tab_news, tab_more = st.tabs(
-    ["◎ Confluence", "◴ Regime", "📊 Greeks", "▦ Heatmap", "〰 Flow", "▤ News", "··· More"])
+tab_conf, tab_regime, tab_greeks, tab_heat, tab_flow, tab_custom, tab_more = st.tabs(
+    ["◎ Confluence", "◴ Regime", "📊 Greeks", "▦ Heatmap", "〰 Flow", "🎨 Customize", "··· More"])
 
 # ---------- GREEKS ----------
 with tab_greeks:
@@ -812,8 +850,7 @@ with tab_regime:
             ("DIST CENTER", f'{rg["dist_center"]:+.2f}σ', C_YELL if abs(rg["dist_center"]) >= 2 else C_TXT),
         ]
         cells = "".join(
-            f'<div style="flex:1 1 23%;min-width:150px;border:1px solid {C_GRID};border-radius:6px;'
-            f'padding:8px 12px;margin:4px;background:{C_BG};">'
+            f'<div class="dg-box" style="flex:1 1 22%;min-width:150px;margin:4px;">'
             f'<div style="color:{C_DIM};font-size:9px;letter-spacing:1px;">{lbl}</div>'
             f'<div style="color:{col};font-size:15px;font-weight:700;">{val}</div></div>' for lbl, val, col in rows)
         st.markdown(f'<div style="display:flex;flex-wrap:wrap;margin-bottom:6px;">{cells}</div>', unsafe_allow_html=True)
@@ -879,23 +916,54 @@ with tab_regime:
                    "GARCH(1,1) drives the vol forecast/path; falls back to EWMA if unavailable. 'Dist center' is "
                    "price's z-score vs its 50-day mean — beyond ±2σ flags an extended/stretched move.")
 
-# ---------- NEWS ----------
-with tab_news:
-    st.markdown('<div class="panel-title">MARKET NEWS</div>', unsafe_allow_html=True)
-    try:
-        news = yf.Ticker(ticker).news or []
-    except Exception:
-        news = []
-    if not news:
-        st.info("No headlines available from Yahoo for this ticker.")
-    for n in news[:20]:
-        c = n.get("content", n)
-        title = c.get("title") or n.get("title", "")
-        pub = (c.get("provider", {}) or {}).get("displayName", n.get("publisher", ""))
-        url = (c.get("canonicalUrl", {}) or {}).get("url") or n.get("link", "#")
-        st.markdown(f'<div class="gx-news"><span class="tag">{pub}</span> &nbsp; '
-                    f'<b><a href="{url}" target="_blank" style="color:{C_TXT};'
-                    f'text-decoration:none">{title}</a></b></div>', unsafe_allow_html=True)
+# ---------- CUSTOMIZE ----------
+with tab_custom:
+    st.markdown(
+        f'<div style="border:1px solid {C_GRID};border-left:4px solid {C_ACCENT};border-radius:10px;'
+        f'padding:16px 20px;margin-bottom:16px;background:{C_PANEL};">'
+        f'<div style="color:{C_ACCENT};font-size:13px;letter-spacing:2px;">CUSTOMIZE</div>'
+        f'<div style="color:{C_DIM};font-size:12px;margin-top:3px;">Pick a theme, font, and box style. '
+        f'Changes apply instantly across the whole app.</div></div>', unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.selectbox("Theme", list(THEMES.keys()), key="dg_theme")
+    with c2:
+        st.selectbox("Font", list(FONTS.keys()), key="dg_font")
+    with c3:
+        st.selectbox("Box style", BOX_STYLES, key="dg_box")
+
+    # ---- theme swatches ----
+    st.markdown('<div class="panel-title" style="margin-top:14px;">THEME PREVIEW</div>', unsafe_allow_html=True)
+    sw = ""
+    for nm, th in THEMES.items():
+        active = nm == st.session_state["dg_theme"]
+        chips = "".join(f'<span style="display:inline-block;width:16px;height:16px;border-radius:50%;'
+                        f'background:{th[k]};margin-right:3px;border:1px solid {_rgba(th["txt"],0.2)};"></span>'
+                        for k in ["g", "r", "y", "accent"])
+        sw += (f'<div class="dg-box" style="display:inline-block;margin:5px;vertical-align:top;'
+               f'{"outline:2px solid "+C_ACCENT+";" if active else ""}background:{th["bg"]};">'
+               f'<div style="color:{th["txt"]};font-size:12px;font-weight:700;margin-bottom:5px;">{nm}'
+               f'{"  ●" if active else ""}</div>{chips}</div>')
+    st.markdown(f'<div>{sw}</div>', unsafe_allow_html=True)
+
+    # ---- live sample of the display boxes ----
+    st.markdown('<div class="panel-title" style="margin-top:16px;">LIVE SAMPLE</div>', unsafe_allow_html=True)
+    sample = (
+        f'<div class="gx-cardrow">'
+        f'<div class="gx-card"><div class="lbl"><span class="dot" style="color:{C_GREEN}">●</span>CALL WALL</div>'
+        f'<div class="val" style="color:{C_GREEN}">$740.00</div><div class="sub">Upside gamma structure</div></div>'
+        f'<div class="gx-card"><div class="lbl"><span class="dot" style="color:{C_RED}">●</span>PUT WALL</div>'
+        f'<div class="val" style="color:{C_RED}">$724.00</div><div class="sub">Downside gamma structure</div></div>'
+        f'<div class="gx-card"><div class="lbl"><span class="dot" style="color:{C_YELL}">●</span>GAMMA FLIP</div>'
+        f'<div class="val" style="color:{C_YELL}">$727.96</div><div class="sub">Regime transition level</div></div>'
+        f'</div>')
+    st.markdown(sample, unsafe_allow_html=True)
+
+    st.caption("Themes change every color (calls stay the bright/up color, puts the down color, so reads stay "
+               "consistent). 'Bubbly' rounds and adds a soft glow; 'Glass' is translucent with blur. Fonts: Mono "
+               "(terminal), Rounded (soft), Grotesk (modern), Techno (sci-fi). Charts and copy boxes stay monospace "
+               "for number legibility. Settings persist for this session.")
 
 # ---------- MORE ----------
 with tab_more:
