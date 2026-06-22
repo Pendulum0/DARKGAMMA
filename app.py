@@ -637,10 +637,10 @@ with tab_greeks:
         fig = go.Figure()
         fig.add_trace(go.Bar(y=g["strike"], x=g["call"], orientation="h",
                              marker_color=C_GREEN, name="Call", width=0.6,
-                             hovertemplate="$%{y:.2f}<br>Call %{x:,.0f}<extra></extra>"))
+                             hovertemplate="$%{y:.2f}<br>Call %{x:.3s}<extra></extra>"))
         fig.add_trace(go.Bar(y=g["strike"], x=g["put"], orientation="h",
                              marker_color=C_RED, name="Put", width=0.6,
-                             hovertemplate="$%{y:.2f}<br>Put %{x:,.0f}<extra></extra>"))
+                             hovertemplate="$%{y:.2f}<br>Put %{x:.3s}<extra></extra>"))
         for val, col, txt, dsh in [(lv["call_wall"], C_GREEN, "Call Wall", "dash"),
                               (lv["put_wall"], C_RED, "Put Wall", "dot"),
                               (lv["max_pain"], C_YELL, "Max Pain", "dashdot"),
@@ -653,7 +653,7 @@ with tab_greeks:
                           title=dict(text=f"{active} Exposure — strike-level structure",
                                      font=dict(size=13, color=C_TXT), x=0.01, y=0.98))
         fig.update_yaxes(title="Strike")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
     # ---- three bottom panels ----
     p1, p2, p3 = st.columns(3)
@@ -664,12 +664,12 @@ with tab_greeks:
         pv = data[data["type"] == "P"].groupby("strike")["vol"].sum()
         sk = pd.DataFrame({"call": cv, "put": -pv}).fillna(0).reset_index()
         f1 = go.Figure()
-        f1.add_trace(go.Bar(y=sk["strike"], x=sk["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:,.0f}<extra></extra>"))
-        f1.add_trace(go.Bar(y=sk["strike"], x=sk["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:,.0f}<extra></extra>"))
+        f1.add_trace(go.Bar(y=sk["strike"], x=sk["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:.3s}<extra></extra>"))
+        f1.add_trace(go.Bar(y=sk["strike"], x=sk["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:.3s}<extra></extra>"))
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f1.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
         f1.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=260)
-        st.plotly_chart(f1, use_container_width=True)
+        st.plotly_chart(f1, use_container_width=True, theme=None)
     # OI DISTRIBUTION
     with p2:
         st.markdown('<div class="panel-title">OI DISTRIBUTION</div>', unsafe_allow_html=True)
@@ -682,7 +682,7 @@ with tab_greeks:
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f2.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
         f2.update_layout(**PLOTLY_LAYOUT, height=260)
-        st.plotly_chart(f2, use_container_width=True)
+        st.plotly_chart(f2, use_container_width=True, theme=None)
     # OPTIONS PREMIUM
     with p3:
         st.markdown(f'<div class="panel-title">OPTIONS PREMIUM &nbsp; '
@@ -693,12 +693,12 @@ with tab_greeks:
         pp = -data[data["type"] == "P"].groupby("strike")["_prem"].sum()
         pr = pd.DataFrame({"call": cp, "put": pp}).fillna(0).reset_index()
         f3 = go.Figure()
-        f3.add_trace(go.Bar(y=pr["strike"], x=pr["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call $%{x:,.0f}<extra></extra>"))
-        f3.add_trace(go.Bar(y=pr["strike"], x=pr["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put $%{x:,.0f}<extra></extra>"))
+        f3.add_trace(go.Bar(y=pr["strike"], x=pr["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call $%{x:.3s}<extra></extra>"))
+        f3.add_trace(go.Bar(y=pr["strike"], x=pr["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put $%{x:.3s}<extra></extra>"))
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f3.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
         f3.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=260)
-        st.plotly_chart(f3, use_container_width=True)
+        st.plotly_chart(f3, use_container_width=True, theme=None)
 
 # ---------- HEATMAP ----------
 with tab_heat:
@@ -723,12 +723,12 @@ with tab_heat:
         fig = go.Figure(go.Heatmap(
             z=pivot.values, x=pivot.columns, y=pivot.index,
             colorscale=[[0, C_RED], [0.5, "#000000"], [1, C_GREEN]], zmid=0,
-            hovertemplate="$%{y:.2f}<br>%{x}<br>Net GEX %{z:,.0f}<extra></extra>",
+            hovertemplate="$%{y:.2f}<br>%{x}<br>Net GEX %{z:.3s}<extra></extra>",
             colorbar=dict(title="Net GEX")))
         fig.add_hline(y=spot, line=dict(color="#fff", width=1, dash="dash"))
         fig.update_layout(**PLOTLY_LAYOUT, height=600)
         fig.update_yaxes(title="Strike"); fig.update_xaxes(title="Expiry")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
     else:
         st.warning("No data for heatmap.")
 
@@ -741,12 +741,12 @@ with tab_flow:
         pv = data[data["type"] == "P"].groupby("strike")["vol"].sum()
         vf = pd.DataFrame({"call": cv, "put": -pv}).fillna(0).reset_index()
         fig = go.Figure()
-        fig.add_trace(go.Bar(y=vf["strike"], x=vf["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:,.0f}<extra></extra>"))
-        fig.add_trace(go.Bar(y=vf["strike"], x=vf["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:,.0f}<extra></extra>"))
+        fig.add_trace(go.Bar(y=vf["strike"], x=vf["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:.3s}<extra></extra>"))
+        fig.add_trace(go.Bar(y=vf["strike"], x=vf["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:.3s}<extra></extra>"))
         fig.add_hline(y=spot, line=dict(color="#fff", width=1, dash="dash"))
         fig.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=520,
                           title=dict(text="Call vs Put Volume", font=dict(size=12, color=C_TXT), x=0.01))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
     with fb:
         cc = data.sort_values("vol", ascending=False).head(15)[
             ["type", "strike", "expiry", "vol", "oi", "impliedVolatility", "mid"]].copy()
@@ -836,7 +836,7 @@ with tab_regime:
                                   title=dict(text=f"{name}  {curval:+.2f}", font=dict(size=12, color=C_TXT),
                                              x=0.02, y=0.96, yanchor="top"))
                 fig.update_xaxes(showticklabels=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, theme=None)
 
         # ---- price + realized vol + return distribution ----
         b1, b2 = st.columns(2)
@@ -855,7 +855,7 @@ with tab_regime:
                               yaxis=dict(title="Price", gridcolor=C_GRID, color=C_DIM),
                               yaxis2=dict(title="RV%", overlaying="y", side="right", color=C_YELL, showgrid=False))
             fig.update_xaxes(showticklabels=False)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme=None)
         with b2:
             st.markdown('<div class="panel-title">RETURN DISTRIBUTION vs NORMAL</div>', unsafe_allow_html=True)
             r = rg["ret_sample"] * 100
@@ -872,7 +872,7 @@ with tab_regime:
             fig.update_layout(**PLOTLY_LAYOUT, height=300,
                               title=dict(text=f"skew {rg['skew']:+.2f} · excess kurt {rg['kurt']:+.2f}",
                                          font=dict(size=11, color=C_DIM), x=0.02))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, theme=None)
 
         st.caption("All metrics derived from free daily price history. Vol annualized. Topology factors are "
                    "z-scored (how far each sits from its ~1yr norm). Hurst >0.55 trending, <0.45 mean-reverting. "
