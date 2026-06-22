@@ -94,6 +94,9 @@ PLOTLY_LAYOUT = dict(
     xaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID, color=C_DIM),
     yaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID, color=C_DIM),
     showlegend=False,
+    hovermode="closest",
+    hoverlabel=dict(bgcolor=C_PANEL, bordercolor=C_GRID,
+                    font=dict(color=C_TXT, size=12, family="monospace")),
 )
 
 # ----------------------------------------------------------------------------
@@ -633,9 +636,11 @@ with tab_greeks:
         g = per_strike(data, gkey, spot, basis=basis)
         fig = go.Figure()
         fig.add_trace(go.Bar(y=g["strike"], x=g["call"], orientation="h",
-                             marker_color=C_GREEN, name="Call", width=0.6))
+                             marker_color=C_GREEN, name="Call", width=0.6,
+                             hovertemplate="$%{y:.2f}<br>Call %{x:,.0f}<extra></extra>"))
         fig.add_trace(go.Bar(y=g["strike"], x=g["put"], orientation="h",
-                             marker_color=C_RED, name="Put", width=0.6))
+                             marker_color=C_RED, name="Put", width=0.6,
+                             hovertemplate="$%{y:.2f}<br>Put %{x:,.0f}<extra></extra>"))
         for val, col, txt, dsh in [(lv["call_wall"], C_GREEN, "Call Wall", "dash"),
                               (lv["put_wall"], C_RED, "Put Wall", "dot"),
                               (lv["max_pain"], C_YELL, "Max Pain", "dashdot"),
@@ -659,8 +664,8 @@ with tab_greeks:
         pv = data[data["type"] == "P"].groupby("strike")["vol"].sum()
         sk = pd.DataFrame({"call": cv, "put": -pv}).fillna(0).reset_index()
         f1 = go.Figure()
-        f1.add_trace(go.Bar(y=sk["strike"], x=sk["call"], orientation="h", marker_color=C_GREEN, width=0.6))
-        f1.add_trace(go.Bar(y=sk["strike"], x=sk["put"], orientation="h", marker_color=C_RED, width=0.6))
+        f1.add_trace(go.Bar(y=sk["strike"], x=sk["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:,.0f}<extra></extra>"))
+        f1.add_trace(go.Bar(y=sk["strike"], x=sk["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:,.0f}<extra></extra>"))
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f1.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
         f1.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=260)
@@ -672,7 +677,7 @@ with tab_greeks:
         oi["pct"] = oi["oi"] / oi["oi"].max() * 100 if oi["oi"].max() else 0
         cmax = oi.loc[oi["oi"].idxmax(), "strike"] if not oi.empty else spot
         colors = ["#f2f2f2" if s == cmax else "#484848" for s in oi["strike"]]
-        f2 = go.Figure(go.Bar(y=oi["strike"], x=oi["pct"], orientation="h",
+        f2 = go.Figure(go.Bar(y=oi["strike"], x=oi["pct"], orientation="h", hovertemplate="$%{y:.2f}<br>OI %{x:.0f}%<extra></extra>",
                               marker_color=colors, width=0.6))
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f2.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
@@ -688,8 +693,8 @@ with tab_greeks:
         pp = -data[data["type"] == "P"].groupby("strike")["_prem"].sum()
         pr = pd.DataFrame({"call": cp, "put": pp}).fillna(0).reset_index()
         f3 = go.Figure()
-        f3.add_trace(go.Bar(y=pr["strike"], x=pr["call"], orientation="h", marker_color=C_GREEN, width=0.6))
-        f3.add_trace(go.Bar(y=pr["strike"], x=pr["put"], orientation="h", marker_color=C_RED, width=0.6))
+        f3.add_trace(go.Bar(y=pr["strike"], x=pr["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call $%{x:,.0f}<extra></extra>"))
+        f3.add_trace(go.Bar(y=pr["strike"], x=pr["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put $%{x:,.0f}<extra></extra>"))
         for v, c in [(lv["call_wall"], C_GREEN), (spot, "#fff"), (lv["put_wall"], C_RED)]:
             f3.add_hline(y=v, line=dict(color=c, width=1, dash="dash"))
         f3.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=260)
@@ -718,6 +723,7 @@ with tab_heat:
         fig = go.Figure(go.Heatmap(
             z=pivot.values, x=pivot.columns, y=pivot.index,
             colorscale=[[0, C_RED], [0.5, "#000000"], [1, C_GREEN]], zmid=0,
+            hovertemplate="$%{y:.2f}<br>%{x}<br>Net GEX %{z:,.0f}<extra></extra>",
             colorbar=dict(title="Net GEX")))
         fig.add_hline(y=spot, line=dict(color="#fff", width=1, dash="dash"))
         fig.update_layout(**PLOTLY_LAYOUT, height=600)
@@ -735,8 +741,8 @@ with tab_flow:
         pv = data[data["type"] == "P"].groupby("strike")["vol"].sum()
         vf = pd.DataFrame({"call": cv, "put": -pv}).fillna(0).reset_index()
         fig = go.Figure()
-        fig.add_trace(go.Bar(y=vf["strike"], x=vf["call"], orientation="h", marker_color=C_GREEN, width=0.6))
-        fig.add_trace(go.Bar(y=vf["strike"], x=vf["put"], orientation="h", marker_color=C_RED, width=0.6))
+        fig.add_trace(go.Bar(y=vf["strike"], x=vf["call"], orientation="h", marker_color=C_GREEN, width=0.6, hovertemplate="$%{y:.2f}<br>Call vol %{x:,.0f}<extra></extra>"))
+        fig.add_trace(go.Bar(y=vf["strike"], x=vf["put"], orientation="h", marker_color=C_RED, width=0.6, hovertemplate="$%{y:.2f}<br>Put vol %{x:,.0f}<extra></extra>"))
         fig.add_hline(y=spot, line=dict(color="#fff", width=1, dash="dash"))
         fig.update_layout(**PLOTLY_LAYOUT, barmode="relative", height=520,
                           title=dict(text="Call vs Put Volume", font=dict(size=12, color=C_TXT), x=0.01))
@@ -823,7 +829,8 @@ with tab_regime:
             with col:
                 vals = series.fillna(0)
                 colors = [C_GREEN if v >= 0 else C_RED for v in vals]
-                fig = go.Figure(go.Bar(x=list(range(len(vals))), y=vals.values, marker_color=colors))
+                fig = go.Figure(go.Bar(x=list(range(len(vals))), y=vals.values, marker_color=colors,
+                                       hovertemplate="%{y:+.2f}<extra></extra>"))
                 fig.add_hline(y=0, line=dict(color=C_GRID, width=1))
                 fig.update_layout(**PLOTLY_LAYOUT, height=210,
                                   title=dict(text=f"{name}  {curval:+.2f}", font=dict(size=12, color=C_TXT),
@@ -839,9 +846,9 @@ with tab_regime:
             rvv = rg["rv"].tail(252)
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=list(range(len(px))), y=px.values, line=dict(color=C_TXT, width=1.5),
-                                     name="Price", yaxis="y1"))
+                                     name="Price", yaxis="y1", hovertemplate="Price $%{y:.2f}<extra></extra>"))
             fig.add_trace(go.Scatter(x=list(range(len(rvv))), y=rvv.values, line=dict(color=C_YELL, width=1),
-                                     name="RV%", yaxis="y2"))
+                                     name="RV%", yaxis="y2", hovertemplate="RV %{y:.1f}%<extra></extra>"))
             lay = dict(PLOTLY_LAYOUT)
             lay.pop("yaxis", None)
             fig.update_layout(**lay, height=300,
@@ -858,8 +865,10 @@ with tab_regime:
             xline = np.linspace(r.min(), r.max(), 200)
             pdf = _norm.pdf(xline, r.mean(), r.std())
             fig = go.Figure()
-            fig.add_trace(go.Bar(x=centers, y=counts, marker_color="#3a6ea5", opacity=0.8, name="Actual"))
-            fig.add_trace(go.Scatter(x=xline, y=pdf, line=dict(color=C_YELL, width=2), name="Normal"))
+            fig.add_trace(go.Bar(x=centers, y=counts, marker_color="#3a6ea5", opacity=0.8, name="Actual",
+                                 hovertemplate="ret %{x:.2f}%<br>density %{y:.2f}<extra></extra>"))
+            fig.add_trace(go.Scatter(x=xline, y=pdf, line=dict(color=C_YELL, width=2), name="Normal",
+                                     hovertemplate="normal %{y:.2f}<extra></extra>"))
             fig.update_layout(**PLOTLY_LAYOUT, height=300,
                               title=dict(text=f"skew {rg['skew']:+.2f} · excess kurt {rg['kurt']:+.2f}",
                                          font=dict(size=11, color=C_DIM), x=0.02))
