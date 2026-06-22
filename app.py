@@ -48,7 +48,7 @@ CSS = f"""
 <style>
 .stApp {{ background:{C_BG}; }}
 #MainMenu, header, footer {{ visibility:hidden; }}
-.block-container {{ padding-top:0.5rem; padding-bottom:2rem; max-width:1600px; }}
+.block-container {{ padding-top:0.5rem; padding-bottom:3rem; padding-left:3rem; padding-right:3rem; max-width:1900px; }}
 * {{ font-family:'SF Mono','JetBrains Mono','Menlo',monospace; }}
 
 .gx-top {{ display:flex; align-items:center; justify-content:space-between;
@@ -90,7 +90,7 @@ st.markdown(CSS, unsafe_allow_html=True)
 PLOTLY_LAYOUT = dict(
     paper_bgcolor=C_BG, plot_bgcolor=C_BG,
     font=dict(color=C_TXT, size=11, family="monospace"),
-    margin=dict(l=10, r=10, t=10, b=10),
+    margin=dict(l=12, r=12, t=44, b=12),
     xaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID, color=C_DIM),
     yaxis=dict(gridcolor=C_GRID, zerolinecolor=C_GRID, color=C_DIM),
     showlegend=False,
@@ -606,8 +606,8 @@ def compute_regime(hist, net_gex, flip, spot):
 # ----------------------------------------------------------------------------
 # TABS
 # ----------------------------------------------------------------------------
-tab_conf, tab_greeks, tab_heat, tab_flow, tab_regime, tab_news, tab_more = st.tabs(
-    ["◎ Confluence", "📊 Greeks", "▦ Heatmap", "〰 Flow", "◴ Regime", "▤ News", "··· More"])
+tab_conf, tab_regime, tab_greeks, tab_heat, tab_flow, tab_news, tab_more = st.tabs(
+    ["◎ Confluence", "◴ Regime", "📊 Greeks", "▦ Heatmap", "〰 Flow", "▤ News", "··· More"])
 
 # ---------- GREEKS ----------
 with tab_greeks:
@@ -825,8 +825,9 @@ with tab_regime:
                 colors = [C_GREEN if v >= 0 else C_RED for v in vals]
                 fig = go.Figure(go.Bar(x=list(range(len(vals))), y=vals.values, marker_color=colors))
                 fig.add_hline(y=0, line=dict(color=C_GRID, width=1))
-                fig.update_layout(**PLOTLY_LAYOUT, height=180,
-                                  title=dict(text=f"{name}  {curval:+.2f}", font=dict(size=12, color=C_TXT), x=0.02))
+                fig.update_layout(**PLOTLY_LAYOUT, height=210,
+                                  title=dict(text=f"{name}  {curval:+.2f}", font=dict(size=12, color=C_TXT),
+                                             x=0.02, y=0.96, yanchor="top"))
                 fig.update_xaxes(showticklabels=False)
                 st.plotly_chart(fig, use_container_width=True)
 
