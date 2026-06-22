@@ -938,11 +938,7 @@ with tab_conf:
                    "Switch to ADTE for the levels that hold across the whole week.")
 
         # ---- COPY LEVELS → TRADINGVIEW ----
-        copy_lines = []
-        for i, row in conf.iterrows():
-            nm = (row["tags"][0] if row["tags"] else row["role"].capitalize()).replace("γ", "Gamma")
-            copy_lines.append(f'{row["strike"]:.2f}=#{i + 1} {nm}')
-        copy_block = "\n".join(copy_lines)
+        copy_block = "\n".join(f'{row["strike"]:.2f}' for _, row in conf.iterrows())
 
         st.markdown(f'<div class="panel-title" style="margin-top:16px;">COPY LEVELS → TRADINGVIEW</div>',
                     unsafe_allow_html=True)
