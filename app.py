@@ -936,3 +936,17 @@ with tab_conf:
                    "▼ below (support). 'Aligned' shows which signals are simultaneously hot at that strike "
                    "(γ gamma · OI · VOL volume · PREM premium · DEX delta · VAN vanna · CHM charm). "
                    "Switch to ADTE for the levels that hold across the whole week.")
+
+        # ---- COPY LEVELS → TRADINGVIEW ----
+        copy_lines = []
+        for i, row in conf.iterrows():
+            nm = (row["tags"][0] if row["tags"] else row["role"].capitalize()).replace("γ", "Gamma")
+            copy_lines.append(f'{row["strike"]:.2f}=#{i + 1} {nm}')
+        copy_block = "\n".join(copy_lines)
+
+        st.markdown(f'<div class="panel-title" style="margin-top:16px;">COPY LEVELS → TRADINGVIEW</div>',
+                    unsafe_allow_html=True)
+        st.caption("Hover the box and click the copy icon (top-right), then paste into the DARKGAMMA "
+                   "indicator's \"Paste Levels\" box on TradingView. Format is price=name, one per line. "
+                   "Prices are QQQ strikes — the indicator converts them to NQ automatically.")
+        st.code(copy_block, language="text")
