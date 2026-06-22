@@ -427,10 +427,187 @@ def confluence_table(data, spot, lv, top_n=8):
     return out.reset_index(drop=True)
 
 # ----------------------------------------------------------------------------
+# REGIME ENGINE — realized vol, GARCH, trend/momentum/vol topology, structure
+# ----------------------------------------------------------------------------
+@st.cache_data(ttl=900, show_spinner=False)
+def get_price_history(ticker, period="2y", interval="1d"):
+    h = yf.Ticker(ticker).history(period=period, interval=interval)
+    return h[["Close"]].dropna()
+
+def hurst_exponent(ts):
+    """0.5=random walk, >0.5 trending/persistent, <0.5 mean-reverting."""
+    ts = np.asarray(ts, float)
+    if len(ts) < 40:
+        return 0.5
+    lags = range(2, min(20, len(ts) // 2))
+    tau = []
+    for lag in lags:
+        diff = ts[lag:] - ts[:-lag]
+        tau.append(np.sqrt(np.std(diff)) if np.std(diff) > 0 else 1e-9)
+    try:
+        m = np.polyfit(np.log(list(lags)), np.log(tau), 1)
+        return float(np.clip(m[0] * 2.0, 0.0, 1.0))
+    except Exception:
+        return 0.5
+
+def zscore_last(series, win=252):
+    s = series.dropna()
+    if len(s) < 20:
+        return 0.0
+    s = s.tail(win)
+    mu, sd = s.mean(), s.std()
+    return float((s.iloc[-1] - mu) / sd) if sd > 0 else 0.0
+
+def compute_regime(hist, net_gex, flip, spot):
+    px = hist["Close"].astype(float)
+    ret = np.log(px / px.shift(1)).dropna()
+    out = {}
+
+    # --- realized volatility (annualized) + percentile rank ---
+    rv = ret.rolling(21).std() * np.sqrt(252) * 100        # % annualized, time series
+    rv_now = float(rv.iloc[-1]) if rv.notna().any() else 0.0
+    rv_hist = rv.dropna().tail(252)
+    rv_pct = float((rv_hist < rv_now).mean() * 100) if len(rv_hist) else 50.0
+    rv_z = zscore_last(rv)
+    out["rv"] = rv
+    out["rv_now"] = rv_now
+    out["rv_pct"] = rv_pct
+    out["rv_z"] = rv_z
+
+    # --- GARCH(1,1) forecast (fallback to EWMA if arch unavailable/fails) ---
+    garch_now = rv_now
+    garch_fcast = rv_now
+    persistence = np.nan
+    try:
+        from arch import arch_model
+        am = arch_model(ret.tail(750) * 100, vol="GARCH", p=1, q=1, dist="t")
+        res = am.fit(disp="off", show_warning=False)
+        cv = res.conditional_volatility
+        garch_now = float(cv.iloc[-1]) * np.sqrt(252)
+        f = res.forecast(horizon=5, reindex=False)
+        garch_fcast = float(np.sqrt(f.variance.values[-1].mean())) * np.sqrt(252)
+        persistence = float(res.params.get("alpha[1]", 0) + res.params.get("beta[1]", 0))
+    except Exception:
+        ew = ret.ewm(span=20).std() * np.sqrt(252) * 100
+        garch_now = float(ew.iloc[-1])
+        garch_fcast = garch_now
+    out["garch_now"] = garch_now
+    out["garch_fcast"] = garch_fcast
+    out["persistence"] = persistence
+    vol_path_pct = (garch_fcast - garch_now) / garch_now * 100 if garch_now else 0.0
+    out["vol_path"] = vol_path_pct
+
+    # --- topology factors (z-scored) : trend / momentum / volatility ---
+    logpx = np.log(px)
+    look = 60
+    def slope_z(s, w):
+        vals = []
+        arr = s.values
+        for i in range(w, len(arr)):
+            y = arr[i - w:i]
+            x = np.arange(w)
+            b = np.polyfit(x, y, 1)[0]
+            vals.append(b)
+        return pd.Series(vals, index=s.index[w:])
+    trend_series = slope_z(logpx, 20) * 1e4
+    mom_series = (px / px.shift(20) - 1) * 100
+    trend = zscore_last(trend_series)
+    momentum = zscore_last(mom_series)
+    out["trend"] = trend
+    out["momentum"] = momentum
+    out["vol_factor"] = rv_z
+    out["trend_series"] = trend_series.tail(look)
+    out["mom_series"] = mom_series.tail(look)
+    out["volz_series"] = ((rv - rv.tail(252).mean()) / (rv.tail(252).std() or 1)).tail(look)
+
+    # --- structure / character ---
+    hurst = hurst_exponent(px.tail(150).values)
+    out["hurst"] = hurst
+    structure = "trending / persistent" if hurst > 0.55 else ("mean-revert" if hurst < 0.45 else "random walk")
+    out["structure"] = structure
+
+    # --- distance from center (z of price vs 50d mean) ---
+    ma = px.rolling(50).mean()
+    sd = px.rolling(50).std()
+    dist_center = float((px.iloc[-1] - ma.iloc[-1]) / sd.iloc[-1]) if sd.iloc[-1] else 0.0
+    out["dist_center"] = dist_center
+
+    # --- return distribution stats ---
+    from scipy.stats import skew, kurtosis
+    r = ret.tail(252).values
+    out["ret_sample"] = r
+    out["skew"] = float(skew(r)) if len(r) > 3 else 0.0
+    out["kurt"] = float(kurtosis(r)) if len(r) > 3 else 0.0
+
+    # --- regime label ---
+    high_vol = rv_pct >= 65
+    low_vol = rv_pct <= 35
+    strong_trend = abs(trend) >= 0.8 or abs(momentum) >= 0.8
+    extended = abs(dist_center) >= 2.0
+    if extended:
+        label = "EXTENDED"
+    elif high_vol and strong_trend:
+        label = "VOLATILE / EXPANSION"
+    elif high_vol:
+        label = "VOLATILE / CHOP"
+    elif low_vol and strong_trend:
+        label = "QUIET TREND"
+    elif low_vol:
+        label = "COMPRESSION / RANGE"
+    elif strong_trend:
+        label = "TRENDING"
+    else:
+        label = "NEUTRAL / TRANSITION"
+    out["label"] = label
+
+    # trend-vs-revert character for trading guidance
+    out["expansion"] = high_vol or strong_trend or extended
+
+    # --- plain-English read ---
+    if extended:
+        read = ("Price is stretched from its mean — the move is extended. Caution chasing here; "
+                "watch for a snapback toward the center rather than initiating fresh trend trades.")
+    elif label.startswith("VOLATILE"):
+        read = ("High realized vol with momentum present. Trend-following / breakout strategies are favored; "
+                "fading moves is dangerous. Respect vol, size down, don't fade blindly.")
+    elif label == "COMPRESSION / RANGE":
+        read = ("Low vol, range-bound. Mean-reversion is favored — fade the edges, expect chop. "
+                "Compression eventually resolves into expansion, so watch for the break.")
+    elif label == "QUIET TREND":
+        read = ("Low vol but directional — a steady grind. Trend continuation favored with shallow pullbacks; "
+                "calm enough to hold, but don't expect violent expansion yet.")
+    elif label == "TRENDING":
+        read = ("Directional bias present at moderate vol. Lean with the trend on pullbacks rather than fading.")
+    else:
+        read = ("Mixed signals — no dominant regime. Lower conviction; let the tape pick a side before committing.")
+    out["read"] = read
+
+    # --- cross-reference with Net GEX gamma regime ---
+    gex_trend = net_gex < 0          # negative gamma → trend/expansion
+    statreg_trend = out["expansion"]
+    if statreg_trend and gex_trend:
+        xref = ("AGREE — both engines flag a trending / expansion regime. "
+                "High-conviction momentum environment; do not fade.")
+        xref_ok = True
+    elif (not statreg_trend) and (not gex_trend):
+        xref = ("AGREE — both engines flag a rotational / contained regime. "
+                "High-conviction fade-the-edges environment.")
+        xref_ok = True
+    else:
+        a = "trend/expansion" if statreg_trend else "rotation/range"
+        b = "trend (neg γ)" if gex_trend else "rotation (pos γ)"
+        xref = (f"DISAGREE — vol-stats say {a}, gamma says {b}. Lower conviction; "
+                f"often a transition. Wait for them to align before sizing up.")
+        xref_ok = False
+    out["xref"] = xref
+    out["xref_ok"] = xref_ok
+    return out
+
+# ----------------------------------------------------------------------------
 # TABS
 # ----------------------------------------------------------------------------
-tab_conf, tab_greeks, tab_heat, tab_flow, tab_news, tab_more = st.tabs(
-    ["◎ Confluence", "📊 Greeks", "▦ Heatmap", "〰 Flow", "▤ News", "··· More"])
+tab_conf, tab_greeks, tab_heat, tab_flow, tab_regime, tab_news, tab_more = st.tabs(
+    ["◎ Confluence", "📊 Greeks", "▦ Heatmap", "〰 Flow", "◴ Regime", "▤ News", "··· More"])
 
 # ---------- GREEKS ----------
 with tab_greeks:
@@ -571,6 +748,126 @@ with tab_flow:
         cc["IV"] = (cc["IV"] * 100).round(1)
         st.markdown('<div class="panel-title">TOP VOLUME CONTRACTS</div>', unsafe_allow_html=True)
         st.dataframe(cc, use_container_width=True, height=480, hide_index=True)
+
+# ---------- REGIME ----------
+with tab_regime:
+    try:
+        hist = get_price_history(ticker, period="2y")
+    except Exception as e:
+        hist = pd.DataFrame()
+    if hist.empty or len(hist) < 60:
+        st.warning("Not enough price history to compute regime.")
+    else:
+        with st.spinner("Modeling regime…"):
+            rg = compute_regime(hist, net_gex, lv["flip"], spot)
+
+        lab = rg["label"]
+        lab_col = C_RED if rg["expansion"] else C_GREEN
+        if lab == "EXTENDED":
+            lab_col = C_YELL
+
+        # ---- banner ----
+        st.markdown(
+            f'<div style="border:1px solid {C_GRID};border-left:4px solid {lab_col};border-radius:10px;'
+            f'padding:16px 20px;margin-bottom:14px;background:{C_PANEL};">'
+            f'<div style="color:{C_DIM};font-size:11px;letter-spacing:2px;">MARKET REGIME · {ticker}</div>'
+            f'<div style="color:{lab_col};font-size:30px;font-weight:800;letter-spacing:1px;margin:2px 0;">{lab}</div>'
+            f'<div style="color:{C_TXT};font-size:12px;">{rg["read"]}</div></div>', unsafe_allow_html=True)
+
+        # ---- cross-reference vs gamma ----
+        xcol = C_GREEN if rg["xref_ok"] else C_YELL
+        st.markdown(
+            f'<div style="border:1px solid {xcol}44;border-radius:8px;padding:10px 14px;margin-bottom:14px;'
+            f'background:{C_PANEL};"><span style="color:{xcol};font-size:11px;letter-spacing:1px;font-weight:700;">'
+            f'VOL-STATS × GAMMA</span><div style="color:{C_TXT};font-size:12px;margin-top:3px;">{rg["xref"]}</div></div>',
+            unsafe_allow_html=True)
+
+        # ---- status grid ----
+        def vol_path_txt(v):
+            if v > 3:  return f"rising {v:+.0f}%"
+            if v < -3: return f"easing {v:+.0f}%"
+            return "flat"
+        mem = "—"
+        if not np.isnan(rg["persistence"]):
+            p = rg["persistence"]
+            mem = "sticky" if p > 0.9 else ("moderate" if p > 0.7 else "fast decay")
+        rows = [
+            ("STATUS", lab, lab_col),
+            ("STRUCTURE", rg["structure"], C_TXT),
+            ("VOL LEVEL", f'{rg["rv_pct"]:.0f}th pct', C_RED if rg["rv_pct"] >= 65 else (C_GREEN if rg["rv_pct"] <= 35 else C_TXT)),
+            ("VOL NOW (ann)", f'{rg["rv_now"]:.0f}%', C_TXT),
+            ("VOL FORECAST", f'{rg["garch_fcast"]:.0f}%', C_TXT),
+            ("VOL PATH", vol_path_txt(rg["vol_path"]), C_RED if rg["vol_path"] > 3 else (C_GREEN if rg["vol_path"] < -3 else C_DIM)),
+            ("VOL MEMORY", mem, C_TXT),
+            ("HURST", f'{rg["hurst"]:.2f}', C_TXT),
+            ("TREND z", f'{rg["trend"]:+.2f}', C_GREEN if rg["trend"] > 0 else C_RED),
+            ("MOMENTUM z", f'{rg["momentum"]:+.2f}', C_GREEN if rg["momentum"] > 0 else C_RED),
+            ("VOLATILITY z", f'{rg["vol_factor"]:+.2f}', C_RED if rg["vol_factor"] > 0 else C_GREEN),
+            ("DIST CENTER", f'{rg["dist_center"]:+.2f}σ', C_YELL if abs(rg["dist_center"]) >= 2 else C_TXT),
+        ]
+        cells = "".join(
+            f'<div style="flex:1 1 23%;min-width:150px;border:1px solid {C_GRID};border-radius:6px;'
+            f'padding:8px 12px;margin:4px;background:{C_BG};">'
+            f'<div style="color:{C_DIM};font-size:9px;letter-spacing:1px;">{lbl}</div>'
+            f'<div style="color:{col};font-size:15px;font-weight:700;">{val}</div></div>' for lbl, val, col in rows)
+        st.markdown(f'<div style="display:flex;flex-wrap:wrap;margin-bottom:6px;">{cells}</div>', unsafe_allow_html=True)
+
+        # ---- TOPOLOGY: trend / momentum / volatility factor histories ----
+        st.markdown('<div class="panel-title" style="margin-top:14px;">TOPOLOGY — trend · momentum · volatility</div>',
+                    unsafe_allow_html=True)
+        t1, t2, t3 = st.columns(3)
+        for col, series, name, curval in [
+            (t1, rg["trend_series"], "Trend", rg["trend"]),
+            (t2, rg["mom_series"], "Momentum", rg["momentum"]),
+            (t3, rg["volz_series"], "Volatility", rg["vol_factor"])]:
+            with col:
+                vals = series.fillna(0)
+                colors = [C_GREEN if v >= 0 else C_RED for v in vals]
+                fig = go.Figure(go.Bar(x=list(range(len(vals))), y=vals.values, marker_color=colors))
+                fig.add_hline(y=0, line=dict(color=C_GRID, width=1))
+                fig.update_layout(**PLOTLY_LAYOUT, height=180,
+                                  title=dict(text=f"{name}  {curval:+.2f}", font=dict(size=12, color=C_TXT), x=0.02))
+                fig.update_xaxes(showticklabels=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ---- price + realized vol + return distribution ----
+        b1, b2 = st.columns(2)
+        with b1:
+            st.markdown('<div class="panel-title">PRICE & REALIZED VOL</div>', unsafe_allow_html=True)
+            px = hist["Close"].tail(252)
+            rvv = rg["rv"].tail(252)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=list(range(len(px))), y=px.values, line=dict(color=C_TXT, width=1.5),
+                                     name="Price", yaxis="y1"))
+            fig.add_trace(go.Scatter(x=list(range(len(rvv))), y=rvv.values, line=dict(color=C_YELL, width=1),
+                                     name="RV%", yaxis="y2"))
+            lay = dict(PLOTLY_LAYOUT)
+            lay.pop("yaxis", None)
+            fig.update_layout(**lay, height=300,
+                              yaxis=dict(title="Price", gridcolor=C_GRID, color=C_DIM),
+                              yaxis2=dict(title="RV%", overlaying="y", side="right", color=C_YELL, showgrid=False))
+            fig.update_xaxes(showticklabels=False)
+            st.plotly_chart(fig, use_container_width=True)
+        with b2:
+            st.markdown('<div class="panel-title">RETURN DISTRIBUTION vs NORMAL</div>', unsafe_allow_html=True)
+            r = rg["ret_sample"] * 100
+            counts, edges = np.histogram(r, bins=40, density=True)
+            centers = (edges[:-1] + edges[1:]) / 2
+            from scipy.stats import norm as _norm
+            xline = np.linspace(r.min(), r.max(), 200)
+            pdf = _norm.pdf(xline, r.mean(), r.std())
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=centers, y=counts, marker_color="#3a6ea5", opacity=0.8, name="Actual"))
+            fig.add_trace(go.Scatter(x=xline, y=pdf, line=dict(color=C_YELL, width=2), name="Normal"))
+            fig.update_layout(**PLOTLY_LAYOUT, height=300,
+                              title=dict(text=f"skew {rg['skew']:+.2f} · excess kurt {rg['kurt']:+.2f}",
+                                         font=dict(size=11, color=C_DIM), x=0.02))
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.caption("All metrics derived from free daily price history. Vol annualized. Topology factors are "
+                   "z-scored (how far each sits from its ~1yr norm). Hurst >0.55 trending, <0.45 mean-reverting. "
+                   "GARCH(1,1) drives the vol forecast/path; falls back to EWMA if unavailable. 'Dist center' is "
+                   "price's z-score vs its 50-day mean — beyond ±2σ flags an extended/stretched move.")
 
 # ---------- NEWS ----------
 with tab_news:
