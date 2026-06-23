@@ -8,6 +8,7 @@ Deps: pip install streamlit yfinance plotly pandas numpy scipy
 """
 
 import datetime as dt
+import json
 import math
 import warnings
 
@@ -60,14 +61,38 @@ FONTS = {
 }
 BOX_STYLES = ["Sharp", "Bubbly", "Glass"]
 
-# persist customization across refresh via URL query params (no DB/login needed)
+# persist customization in the BROWSER (localStorage) so it survives quit/reopen,
+# with URL query params as a shareable fallback. localStorage > URL > default.
 _qp = st.query_params
-def _seed(key, val, valid, default):
+try:
+    from streamlit_local_storage import LocalStorage
+    _ls = LocalStorage(key="dg_ls")
+    _raw = _ls.getItem("dg_settings")
+    _saved = json.loads(_raw) if _raw else {}
+    if not isinstance(_saved, dict):
+        _saved = {}
+except Exception:
+    _ls = None
+    _saved = {}
+
+def _pick(name, valid, default):
+    for src in (_saved.get(name), _qp.get(name)):
+        if src in valid:
+            return src
+    return default
+def _seed(key, name, valid, default):
     if key not in st.session_state:
-        st.session_state[key] = val if val in valid else default
-_seed("dg_theme", _qp.get("theme"), THEMES, "Midnight")
-_seed("dg_font", _qp.get("font"), FONTS, "Mono")
-_seed("dg_box", _qp.get("box"), BOX_STYLES, "Sharp")
+        st.session_state[key] = _pick(name, valid, default)
+_seed("dg_theme", "theme", THEMES, "Midnight")
+_seed("dg_font", "font", FONTS, "Mono")
+_seed("dg_box", "box", BOX_STYLES, "Sharp")
+# localStorage loads asynchronously (None on first paint, value after a rerun) —
+# apply it once it arrives so the saved look always wins.
+if _saved and not st.session_state.get("dg_ls_applied"):
+    if _saved.get("theme") in THEMES: st.session_state["dg_theme"] = _saved["theme"]
+    if _saved.get("font") in FONTS: st.session_state["dg_font"] = _saved["font"]
+    if _saved.get("box") in BOX_STYLES: st.session_state["dg_box"] = _saved["box"]
+    st.session_state["dg_ls_applied"] = True
 _t = THEMES.get(st.session_state["dg_theme"], THEMES["Midnight"])
 _font = FONTS.get(st.session_state["dg_font"], FONTS["Mono"])
 _box = st.session_state["dg_box"] if st.session_state["dg_box"] in BOX_STYLES else "Sharp"
@@ -945,13 +970,19 @@ with tab_custom:
     with c3:
         st.selectbox("Box style", BOX_STYLES, key="dg_box")
 
-    # save settings to the URL so they survive a refresh / can be bookmarked
+    # save settings to the browser (persists across quit/reopen) + URL (shareable)
     _want = {"theme": st.session_state["dg_theme"], "font": st.session_state["dg_font"],
              "box": st.session_state["dg_box"]}
     if any(st.query_params.get(k) != v for k, v in _want.items()):
         for k, v in _want.items():
             st.query_params[k] = v
-    st.caption("✓ Saved — these settings persist when you refresh or reopen this URL (and you can bookmark it).")
+    if _ls is not None:
+        _curs = json.dumps(_want, sort_keys=True)
+        if _curs != st.session_state.get("dg_ls_last"):
+            _ls.setItem("dg_settings", _curs, key="dg_set")
+            st.session_state["dg_ls_last"] = _curs
+    st.caption("✓ Saved to this browser — your look stays when you quit and reopen, "
+               "no matter how you launch the app.")
 
     # ---- theme swatches ----
     st.markdown('<div class="panel-title" style="margin-top:14px;">THEME PREVIEW</div>', unsafe_allow_html=True)
