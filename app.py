@@ -61,13 +61,13 @@ FONTS = {
 BOX_STYLES = ["Sharp", "Bubbly", "Glass"]
 
 # persist customization across refresh via URL query params (no DB/login needed)
-if "dg_init" not in st.session_state:
-    _qp = st.query_params
-    _qt, _qf, _qb = _qp.get("theme"), _qp.get("font"), _qp.get("box")
-    st.session_state["dg_theme"] = _qt if _qt in THEMES else "Midnight"
-    st.session_state["dg_font"] = _qf if _qf in FONTS else "Mono"
-    st.session_state["dg_box"] = _qb if _qb in BOX_STYLES else "Sharp"
-    st.session_state["dg_init"] = True
+_qp = st.query_params
+def _seed(key, val, valid, default):
+    if key not in st.session_state:
+        st.session_state[key] = val if val in valid else default
+_seed("dg_theme", _qp.get("theme"), THEMES, "Midnight")
+_seed("dg_font", _qp.get("font"), FONTS, "Mono")
+_seed("dg_box", _qp.get("box"), BOX_STYLES, "Sharp")
 _t = THEMES.get(st.session_state["dg_theme"], THEMES["Midnight"])
 _font = FONTS.get(st.session_state["dg_font"], FONTS["Mono"])
 _box = st.session_state["dg_box"] if st.session_state["dg_box"] in BOX_STYLES else "Sharp"
