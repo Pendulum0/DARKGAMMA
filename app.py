@@ -392,12 +392,21 @@ total_prem = (data["mid"] * data["oi"] * CONTRACT_MULT).sum()
 st.markdown(f'<div style="color:{C_DIM};font-size:12px;letter-spacing:1px;margin-top:8px;">'
             f'{ticker} · {exp_label}</div>', unsafe_allow_html=True)
 
+# dropdown sits above the NET card (4th of 5) and chooses which net exposure it shows
+_dcols = st.columns(5)
+with _dcols[3]:
+    net_metric = st.selectbox("net", ["GEX", "DEX", "VEX", "CHEX"], key="net_metric",
+                              label_visibility="collapsed")
+net_disp = per_strike(data, GREEK_MAP[net_metric], spot)["net"].sum()
+_net_sub = {"GEX": "Aggregate gamma exposure", "DEX": "Aggregate delta exposure",
+            "VEX": "Aggregate vega exposure", "CHEX": "Aggregate charm exposure"}[net_metric]
+
 cards = [
     ("● SPOT", f"${spot:,.2f}", "Current reference level", C_TXT, C_DIM),
     ("● CALL WALL", f"${lv['call_wall']:,.2f}", "Upside gamma structure", C_GREEN, C_GREEN),
     ("● PUT WALL", f"${lv['put_wall']:,.2f}", "Downside gamma structure", C_RED, C_RED),
-    ("● NET GEX", fmt_b(net_gex), "Aggregate dealer exposure",
-     C_GREEN if net_gex >= 0 else C_RED, C_GREEN if net_gex >= 0 else C_RED),
+    (f"● NET {net_metric}", fmt_b(net_disp), _net_sub,
+     C_GREEN if net_disp >= 0 else C_RED, C_GREEN if net_disp >= 0 else C_RED),
     ("● GAMMA FLIP", f"${lv['flip']:,.2f}", "Regime transition level", C_YELL, C_YELL),
 ]
 html = '<div class="gx-cardrow">'
