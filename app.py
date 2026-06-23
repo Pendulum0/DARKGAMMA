@@ -60,9 +60,14 @@ FONTS = {
 }
 BOX_STYLES = ["Sharp", "Bubbly", "Glass"]
 
-st.session_state.setdefault("dg_theme", "Midnight")
-st.session_state.setdefault("dg_font", "Mono")
-st.session_state.setdefault("dg_box", "Sharp")
+# persist customization across refresh via URL query params (no DB/login needed)
+if "dg_init" not in st.session_state:
+    _qp = st.query_params
+    _qt, _qf, _qb = _qp.get("theme"), _qp.get("font"), _qp.get("box")
+    st.session_state["dg_theme"] = _qt if _qt in THEMES else "Midnight"
+    st.session_state["dg_font"] = _qf if _qf in FONTS else "Mono"
+    st.session_state["dg_box"] = _qb if _qb in BOX_STYLES else "Sharp"
+    st.session_state["dg_init"] = True
 _t = THEMES.get(st.session_state["dg_theme"], THEMES["Midnight"])
 _font = FONTS.get(st.session_state["dg_font"], FONTS["Mono"])
 _box = st.session_state["dg_box"] if st.session_state["dg_box"] in BOX_STYLES else "Sharp"
@@ -120,6 +125,9 @@ code, pre, [data-testid="stCode"], [data-testid="stCode"] * {{ font-family:'JetB
 div[data-testid="stMetric"] {{ {CARD} padding:10px 16px; }}
 .stSelectbox label, .stRadio label {{ color:{C_DIM}; font-size:11px; }}
 hr {{ border-color:{C_GRID}; }}
+.stButton button {{ background:{C_PANEL}; border:1px solid {C_GRID}; color:{C_ACCENT};
+  border-radius:{TAB_RADIUS}; font-size:12px; font-weight:700; padding:4px 10px; }}
+.stButton button:hover {{ border-color:{_rgba(C_ACCENT,0.5)}; color:{C_TXT}; }}
 .panel-title {{ font-size:11px; letter-spacing:1px; color:{C_DIM}; margin-bottom:2px; }}
 </style>
 """
@@ -299,12 +307,16 @@ def fmt_b(x):
 # TOP BAR
 # ----------------------------------------------------------------------------
 now = dt.datetime.now(ET).strftime("%H:%M:%S ET")
-c1, c2, c3 = st.columns([3, 5, 3])
+c1, c2, c3, c4 = st.columns([3, 4, 1.3, 2.4])
 with c1:
     st.markdown('<div class="gx-logo">🔳 DARK<span>GAMMA</span></div>', unsafe_allow_html=True)
 with c2:
     ticker = st.text_input("ticker", "QQQ", label_visibility="collapsed").upper().strip()
 with c3:
+    if st.button("⟳ Refresh", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+with c4:
     st.markdown(f'<div style="text-align:right;"><span class="gx-live">● LIVE</span>'
                 f'<span class="gx-clock">{now}</span></div>', unsafe_allow_html=True)
 
@@ -932,6 +944,14 @@ with tab_custom:
         st.selectbox("Font", list(FONTS.keys()), key="dg_font")
     with c3:
         st.selectbox("Box style", BOX_STYLES, key="dg_box")
+
+    # save settings to the URL so they survive a refresh / can be bookmarked
+    _want = {"theme": st.session_state["dg_theme"], "font": st.session_state["dg_font"],
+             "box": st.session_state["dg_box"]}
+    if any(st.query_params.get(k) != v for k, v in _want.items()):
+        for k, v in _want.items():
+            st.query_params[k] = v
+    st.caption("✓ Saved — these settings persist when you refresh or reopen this URL (and you can bookmark it).")
 
     # ---- theme swatches ----
     st.markdown('<div class="panel-title" style="margin-top:14px;">THEME PREVIEW</div>', unsafe_allow_html=True)
