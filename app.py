@@ -881,6 +881,73 @@ with tab_regime:
             f'VOL-STATS × GAMMA</span><div style="color:{C_TXT};font-size:12px;margin-top:3px;">{rg["xref"]}</div></div>',
             unsafe_allow_html=True)
 
+        # ---- SECONDARY GREEKS confirmation (DEX / VEX / CHEX) ----
+        net_dex = exposure(data, "delta", spot).sum()
+        net_vex = exposure(data, "vega", spot).sum()
+        net_chex = exposure(data, "charm", spot).sum()
+
+        # directional bias votes (up vs down) from independent directional reads
+        votes = {
+            "Price trend": rg["trend"] > 0,
+            "Momentum": rg["momentum"] > 0,
+            "DEX positioning": net_dex > 0,
+            "Spot vs γ-flip": spot > lv["flip"],
+        }
+        up = sum(1 for v in votes.values() if v)
+        down = len(votes) - up
+        if up >= 3:
+            bias_dir, bias_n, bias_col = "BULLISH", up, C_GREEN
+        elif down >= 3:
+            bias_dir, bias_n, bias_col = "BEARISH", down, C_RED
+        else:
+            bias_dir, bias_n, bias_col = "MIXED", max(up, down), C_YELL
+        bias_conf = "high" if bias_n == 4 else ("moderate" if bias_n == 3 else "low")
+
+        # regime confirmation votes (trend/expansion vs rotation/range)
+        rv_trend = {"Vol-stats": rg["expansion"], "Gamma (GEX)": net_gex < 0, "Vega (VEX)": net_vex < 0}
+        tr = sum(1 for v in rv_trend.values() if v)
+        if tr >= 2:
+            reg_lab, reg_n, reg_col = "TREND / EXPANSION", tr, C_RED
+        else:
+            reg_lab, reg_n, reg_col = "ROTATION / RANGE", 3 - tr, C_GREEN
+
+        # three greek boxes
+        def _sub(v):
+            return C_GREEN if v > 0 else (C_RED if v < 0 else C_DIM)
+        gboxes = [
+            ("NET DEX", fmt_b(net_dex), _sub(net_dex),
+             "call-skewed · bullish lean" if net_dex > 0 else "put-skewed · bearish/hedged lean"),
+            ("NET VEX", fmt_b(net_vex), _sub(-net_vex),
+             "dealers short vega · vol-expansion lean" if net_vex < 0 else "dealers long vega · vol-dampening lean"),
+            ("NET CHEX", fmt_b(net_chex), C_YELL,
+             "strong charm · drift into close" if abs(net_chex) > 5e5 else "light charm · little drift"),
+        ]
+        gcells = "".join(
+            f'<div class="dg-box" style="flex:1 1 30%;min-width:170px;margin:4px;">'
+            f'<div style="color:{C_DIM};font-size:9px;letter-spacing:1px;">{lbl}</div>'
+            f'<div style="color:{col};font-size:18px;font-weight:700;">{val}</div>'
+            f'<div style="color:{C_DIM};font-size:10px;">{note}</div></div>' for lbl, val, col, note in gboxes)
+        st.markdown(f'<div class="panel-title" style="margin-top:2px;">SECONDARY GREEKS — confirmation layer</div>'
+                    f'<div style="display:flex;flex-wrap:wrap;">{gcells}</div>', unsafe_allow_html=True)
+
+        # two confidence summaries
+        vlist = " · ".join(f'{k} {"↑" if v else "↓"}' for k, v in votes.items())
+        st.markdown(
+            f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">'
+            f'<div class="dg-box" style="flex:1 1 48%;min-width:260px;border-left:3px solid {bias_col};">'
+            f'<div style="color:{C_DIM};font-size:10px;letter-spacing:1px;">DIRECTIONAL BIAS</div>'
+            f'<div style="color:{bias_col};font-size:17px;font-weight:700;">{bias_dir} · {bias_conf} confidence '
+            f'({bias_n}/4)</div><div style="color:{C_DIM};font-size:10px;margin-top:2px;">{vlist}</div></div>'
+            f'<div class="dg-box" style="flex:1 1 48%;min-width:260px;border-left:3px solid {reg_col};">'
+            f'<div style="color:{C_DIM};font-size:10px;letter-spacing:1px;">REGIME CONFIRMATION</div>'
+            f'<div style="color:{reg_col};font-size:17px;font-weight:700;">{reg_lab} ({reg_n}/3 agree)</div>'
+            f'<div style="color:{C_DIM};font-size:10px;margin-top:2px;">vol-stats · gamma · vega</div></div>'
+            f'</div>', unsafe_allow_html=True)
+        st.caption("Directional bias counts 4 independent reads (price trend, momentum, delta positioning, spot vs "
+                   "γ-flip). Regime confirmation counts vol-stats + gamma + vega. DEX positioning leans the stated "
+                   "way but heavy puts can be hedging not conviction — treat as one vote, not proof. CHEX is drift "
+                   "intensity into the close, strongest on 0DTE.")
+
         # ---- status grid ----
         def vol_path_txt(v):
             if v > 3:  return f"rising {v:+.0f}%"
